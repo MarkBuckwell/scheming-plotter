@@ -41,7 +41,7 @@ DataArray = repmat ( { ' ' } , NFC , 1 ) ; % Recipient array for all data.
 SetPoints = zeros ( NFC , 1 ) ; % Setpoint values.
 SampleFrequency = zeros ( NFC , 1 ) ; % Matrix for sample lengths per file.
 AnalysisSection = repmat ( { ' ' } , NFC , 1 ) ; % For cropped analysis sections.
-VIterationRange = 0.05 : 0.05 : 1 ; % Range of spike voltage thresholds.
+VIterationRange = 0.05 : 0.05 : 0.5 ; % Range of spike voltage thresholds.
 for i = 1 : NFC
     if NFC == 1 
         FileName = char ( FileSet ) ; % Choose single file.
@@ -190,14 +190,22 @@ close ;
 JetSet = jet ( numel ( VIterationRange ) ) ; % Creates rainbow colour set.
 
 %% Option of rising edge threshold fitting algorithms.
-iFit = 1 ;
-% Hyperbolic tangent, iFit = 1 (Mehonic, Kenyon, Frontiers).
-RisingTanH = fittype ( 'a*(1+(tanh((b*x)-c)))' , 'Independent' , 'x' , 'Dependent' , 'y' ) ;
-% Sigmoid, iFit = 2, probabilistic early deep neural network "squishification" (3Blue1Brown, YouTube).
-RisingSigmoid = fittype ( '(a/(1+exp(b*-x)))+c' , 'Independent' , 'x' , 'Dependent' , 'y' );
-% Softplus ReLU, iFit = 3 (rectified linear unit), more current "squishifier" (3Blue1Brown, Youtube).
-RisingSoftReLU = fittype ( '(a*log(1+exp(b*x)))+c' , 'Independent' , 'x' , 'Dependent' , 'y' ) ;
-
+iFit = 2 ;
+if iFit == 1
+    % Hyperbolic tangent, iFit = 1 (Mehonic, Kenyon, Frontiers).
+    RisingThresholdFit = fittype ( 'a*(1+(tanh((b*x)-c)))' , 'Independent' ,...
+        'x' , 'Dependent' , 'y' ) ;
+elseif iFit == 2
+    % Sigmoid, iFit = 2, probabilistic early deep neural network
+    % "squishification" (3Blue1Brown, YouTube).
+    RisingThresholdFit =  fittype ( '(a/(1+exp(b*-x)))+c' , 'Independent' ,...
+        'x' , 'Dependent' , 'y' ) ;
+elseif iFit == 3
+    % Softplus ReLU, iFit = 3 (rectified linear unit), more current
+    % "squishifier" (3Blue1Brown, Youtube).
+    RisingThresholdFit = fittype ( '(a*log(1+exp(b*x)))+c' , 'Independent' ,...
+        'x' , 'Dependent' , 'y' ) ;
+end
 FallingThresholdFit = fittype ( 'a*(1-(tanh((b*x)-c)))' , 'independent' , 'x' , 'dependent' , 'y' ) ;
 %% Number of spikes per second (from entire range).
 figure ;
