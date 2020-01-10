@@ -41,7 +41,7 @@ DataArray = repmat ( { ' ' } , NFC , 1 ) ; % Recipient array for all data.
 SetPoints = zeros ( NFC , 1 ) ; % Setpoint values.
 SampleFrequency = zeros ( NFC , 1 ) ; % Matrix for sample lengths per file.
 AnalysisSection = repmat ( { ' ' } , NFC , 1 ) ; % For cropped analysis sections.
-VIterationRange = 0.05 : 0.05 : 0.5 ; % Range of spike voltage thresholds.
+VIterationRange = 0.1 : 0.1 : 0.5 ; % Range of spike voltage thresholds.
 for i = 1 : NFC
     if NFC == 1 
         FileName = char ( FileSet ) ; % Choose single file.
@@ -192,27 +192,34 @@ JetSet = jet ( numel ( VIterationRange ) ) ; % Creates rainbow colour set.
 %% Option of rising edge threshold fitting algorithms.
 iFit = 2 ;
 if iFit == 1
-    % Hyperbolic tangent, iFit = 1 (Mehonic, Kenyon, Frontiers).
+    % Hyperbolic tangent, iFit = 1 (Mehonic, Front. Neurosci., vol. 10, no.
+    % 57, pp. 1?10, 2016.)
     RisingThresholdFit = fittype ( 'a*(1+(tanh((b*x)-c)))' , 'Independent' ,...
         'x' , 'Dependent' , 'y' ) ;
+    SpSUpper = [ 10000 10000 10000 ] ;
+    SpSLower = [ -10000 -10000 -10000 ] ;
+SpSTitle =  'SpS tanh fit = p_1 [ 1 + tanh ( p_2i_{set} - p_0 )]'  ;
 elseif iFit == 2
     % Sigmoid, iFit = 2, probabilistic early deep neural network
     % "squishification" (3Blue1Brown, YouTube).
     RisingThresholdFit =  fittype ( '(a/(1+exp(b*-x)))+c' , 'Independent' ,...
         'x' , 'Dependent' , 'y' ) ;
+    SpSUpper = [ 10000 10000 10000 ] ;
+    SpSLower = [ -10000 -10000 -10000 ] ;
+    SpSTitle =  'SpS sigmoid fit = [p_1 / (1 + e^{-p_2x})] + p_0'  ;
 elseif iFit == 3
     % Softplus ReLU, iFit = 3 (rectified linear unit), more current
     % "squishifier" (3Blue1Brown, Youtube).
     RisingThresholdFit = fittype ( '(a*log(1+exp(b*x)))+c' , 'Independent' ,...
         'x' , 'Dependent' , 'y' ) ;
+    SpSUpper = [ 10000 10000 10000 ] ;
+    SpSLower = [ -10000 -10000 -10000 ] ;
+    SpSTitle =  'SpS softplus ReLU fit = p_1ln(1+e^{p_2x}) + p_0' ;
 end
 FallingThresholdFit = fittype ( 'a*(1-(tanh((b*x)-c)))' , 'independent' , 'x' , 'dependent' , 'y' ) ;
 %% Number of spikes per second (from entire range).
 figure ;
-SpS = zeros ( numel ( VIterationRange ) , iFit + 1 ) ;
-% Threhsold fitting as in ?Fig 7, A. Mehonic and A. J. Kenyon, ?Emulating the
-% electrical activity of the neuron using a silicon oxide RRAM cell,? Front.
-% Neurosci., vol. 10, no. 57, pp. 1?10, 2016.
+SpS = zeros ( numel ( VIterationRange ) , 4 ) ;
 for i = 1 : numel ( VIterationRange )
     SpikesPerSecond = reshape ( OutputData ( i , 1 , : ) , NFC , 1 ) ;
     semilogx ( SetPoints , SpikesPerSecond , 'o' , 'Color' , JetSet ( i , : ) ) ;
@@ -222,9 +229,9 @@ for i = 1 : numel ( VIterationRange )
     set ( gcf , 'Color' , 'w' ) ;
     hold on
     [ SpSFit , SpSGoF ] = fit ( SetPoints , SpikesPerSecond , RisingThresholdFit ,...
-        'StartPoint' , [ 0 0 0 ] ) ;
+        'StartPoint' , [ 0 0 0 ] , 'Upper' , SpSUpper , 'Lower' , SpSLower ) ;
     
-    %% For all fits
+    %% For all fits.
     SpS ( i , 1 ) = SpSFit . a ;
     SpS ( i , 2 ) = SpSFit . b ;
     SpS ( i , 3 ) = SpSFit . c ;
@@ -256,7 +263,7 @@ for i = 1 : numel ( VIterationRange )
         ylabel ( 'Normalized parameter value' ) ;
         set ( gca , 'FontSize' , 14 ) ;
         set ( gcf , 'Color' , 'w' ) ;
-        title ( 'SpS threshold fitting, SpS = p_1 [ 1 + tanh ( p_2i_{set} - p_0 )]' ) ;
+        title ( SpSTitle ) ;
         % p1 decreases power/logarithmically with threshold, just
         % indicating fewer spikes per second at higher thresholds. p2
         % increases linearly, which follows because the current se. p0
