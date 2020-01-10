@@ -3,14 +3,19 @@ clc
 close all
 set ( 0 , 'DefaultFigureWindowStyle' , 'Docked' ) ;
 
-%% More quickly process pre-sections constant bias CAFM 0D data. Files
-% previously exported from matlab, as sections cut from full measurements,
-% ready for analysis via FFT and spike distributions. Data is already
-% absolute and has been sensitivity-corrected. Input files are 3 ascii
-% columns without a header; 1) time; 2) current; 3) voltage. Process
-% multiple files at once rather than altogether. If files are named such
-% that the current bias of each measurement is in the title (using the
-% same unit magnitude for each title) then they should get sorted accordingly.
+%% More quickly process pre-sectioned segments of CAFM 0D (time-domain) data.
+% Files should be sections of data cut from full measurements,
+% corresponding to regions of constant stress (i.e. constant current or
+% voltage, or other data would also work). This is for spike analysis, i.e.
+% during stress, spiking occurs, and this script allows the user to look
+% at the distributions of spiking events and perform FFT. Typical input
+% data is absolute, sensitivity-corrected current/voltage/time floating
+% points, but the script should readily be adjusted for other data types.
+% As written, input files should be 3 ascii columns without a header;
+% 1) time; 2) current; 3) voltage. Can process multiple files at once rather
+% than altogether. If files names contain a metric denoting the test
+% condition (using the same unit magnitude for each title) then they
+% should get sorted accordingly.
 
 %% Get files and locations.
 addpath ( cd ) ;
