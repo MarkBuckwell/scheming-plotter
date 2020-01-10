@@ -68,7 +68,7 @@ for i = 1 : NFC
         10 * FilterWidth ) ;
 end 
 
-%% Process data.
+%% Process data to get ditributions of peak parameters.
 OutputData = zeros ( numel ( VIterationRange ) , 17 , NFC ) ;
 MinPeakHeight = 0 ; % Minimum absolute peak height in V.
 MinPeakWidth = 0 ; % Minimum peak width threshold in s.
@@ -188,12 +188,20 @@ close ;
 
 %% Plot and fit data.
 JetSet = jet ( numel ( VIterationRange ) ) ; % Creates rainbow colour set.
-RisingThresholdFit = fittype ( 'a*(1+(tanh((b*x)-c)))' , 'independent' , 'x' , 'dependent' , 'y' ) ;
-% RisingThresholdFit = fittype ( 'a/(1+exp(b*x))', 'independent','x','dependent','y');
+
+%% Option of rising edge threshold fitting algorithms.
+iFit = 1 ;
+% Hyperbolic tangent, iFit = 1 (Mehonic, Kenyon, Frontiers).
+RisingTanH = fittype ( 'a*(1+(tanh((b*x)-c)))' , 'Independent' , 'x' , 'Dependent' , 'y' ) ;
+% Sigmoid, iFit = 2, probabilistic early deep neural network "squishification" (3Blue1Brown, YouTube).
+RisingSigmoid = fittype ( '(a/(1+exp(b*-x)))+c' , 'Independent' , 'x' , 'Dependent' , 'y' );
+% Softplus ReLU, iFit = 3 (rectified linear unit), more current "squishifier" (3Blue1Brown, Youtube).
+RisingSoftReLU = fittype ( '(a*log(1+exp(b*x)))+c' , 'Independent' , 'x' , 'Dependent' , 'y' ) ;
+
 FallingThresholdFit = fittype ( 'a*(1-(tanh((b*x)-c)))' , 'independent' , 'x' , 'dependent' , 'y' ) ;
 %% Number of spikes per second (from entire range).
 figure ;
-SpS = zeros ( numel ( VIterationRange ) , 4 ) ;
+SpS = zeros ( numel ( VIterationRange ) , iFit + 1 ) ;
 % Threhsold fitting as in ?Fig 7, A. Mehonic and A. J. Kenyon, ?Emulating the
 % electrical activity of the neuron using a silicon oxide RRAM cell,? Front.
 % Neurosci., vol. 10, no. 57, pp. 1?10, 2016.
@@ -207,23 +215,46 @@ for i = 1 : numel ( VIterationRange )
     hold on
     [ SpSFit , SpSGoF ] = fit ( SetPoints , SpikesPerSecond , RisingThresholdFit ,...
         'StartPoint' , [ 0 0 0 ] ) ;
+    
+    %% For all fits
     SpS ( i , 1 ) = SpSFit . a ;
     SpS ( i , 2 ) = SpSFit . b ;
     SpS ( i , 3 ) = SpSFit . c ;
-    SpS ( i , 4 ) = SpSGoF . rsquare ;
-    semilogx ( SetPoints , ( SpS ( i , 1 ) .* ( 1 + tanh ( ( SpS ( i , 2 ) .*...
-        SetPoints ) - SpS ( i , 3 ) ) ) ) , 'Color' , JetSet ( i , : ) ) ;
-    % Also plot change in fitting parameters at end of loop.
+    SpS ( i , end ) = SpSGoF . rsquare ;
+    % For tanh fits - this is a really good fit.
+    if iFit == 1
+        SpSModel = SpS ( i , 1 ) .* ( 1 + tanh ( ( SpS ( i , 2 ) .* SetPoints ) -...
+            SpS ( i , 3 ) ) ) ;
+    % For sigmoid fits - this is a poor fit, doesn't capture the range
+    % properly.
+    elseif iFit == 2
+        SpSModel = ( SpS ( i , 1 ) ./ ( 1 + exp ( SpS ( i , 2 ) .* ( -1 ) .*...
+            SetPoints ) ) ) + SpS ( i , 3 ) ;
+    % For softplus ReLU fits - this is a poor fit, just increases rapidly with
+    % no plateau.
+    elseif iFit == 3
+        SpSModel = ( SpS ( i , 1 ) .* log ( 1 + exp ( ( SpS ( i , 2 ) .*...
+        SetPoints ) ) ) ) + SpS ( i , 3 ) ;
+    end
+        
+    semilogx ( SetPoints , SpSModel  , 'Color' , JetSet ( i , : ) ) ;
+    %% Also plot change in fitting parameters at end of loop.
     if i == numel ( VIterationRange )
         figure ;
-        plot ( VIterationRange , SpS ( : , 1 ) , VIterationRange , SpS ( : , 2 ) ,...
-            VIterationRange , SpS ( : , 3 ) , 'LineWidth' , 2 ) ;
+        plot ( VIterationRange , SpS ( : , 1 ) / SpS ( 1 , 1 )  ,...
+            VIterationRange , SpS ( : , 2 ) / SpS ( 1 , 2 ) ,...
+            VIterationRange , SpS ( : , 3 ) / SpS ( 1 , 3 ) , 'LineWidth' , 2 ) ;
         xlabel ( 'Prominence threshold/V' ) ;
-        ylabel ( 'Parameter value' ) ;
+        ylabel ( 'Normalized parameter value' ) ;
         set ( gca , 'FontSize' , 14 ) ;
         set ( gcf , 'Color' , 'w' ) ;
-        title ( 'SpS threshold fitting' ) ;
-        legend ( 'p1' , 'p2' , 'p0' , 'Location' , 'NorthWest' ) ;
+        title ( 'SpS threshold fitting, SpS = p_1 [ 1 + tanh ( p_2i_{set} - p_0 )]' ) ;
+        % p1 decreases power/logarithmically with threshold, just
+        % indicating fewer spikes per second at higher thresholds. p2
+        % increases linearly, which follows because the current se. p0
+        % doesn't change much and likely just represents the poor fitting
+        % at very low current bias.
+        legend ( 'p_1' , 'p_2' , 'p_0' , 'Location' , 'NorthWest' ) ;
     end
 end
 %% Modal time between spikes.
