@@ -81,7 +81,7 @@ end
 VFittingRange = SetPoints ( 1 ) : 0.01 : SetPoints ( end ) ;
 
 %% Process data to get ditributions of peak parameters.
-OutputData = zeros (NumProms , 17 , NFC ) ;
+OutputData = zeros (NumProms , 18 , NFC ) ;
 % Data columns in output array:
 % 1) spikes per second (SpS), 2) modal spike separation (max in histogram)
 % 3) frequency of SpS (from histogram), 4) SpS distribution µ, 5) SpS distribution sigma.
@@ -90,13 +90,13 @@ OutputData = zeros (NumProms , 17 , NFC ) ;
 % spike prominence (max in histogram), 11) frequency of max prominence
 % (from histogram), 12) prominence µ, 13) prominence sigma, 14) modal spike
 % height (max in histogram), 15) frequency of max height (from histogram),
-% 16) height µ, 17) height sigma.
+% 16) height µ, 17) height sigma, 18) mean spike height.
 
 MinPeakHeight = 0 ; % Minimum absolute peak height in V.
 MinPeakWidth = 0 ; % Minimum peak width threshold in s.
 MaxPeakWidth = 5 ; % Maximum peak width threshold in s.
 DistType = 'LogNormal' ;  % Type of distribution to fit.
-SaveHists = 1 ; % Histograms can be saved if SaveHists == 1.
+SaveHists = 0 ; % Histograms can be saved if SaveHists == 1.
 if SaveHists == 1 % New folder to put histograms in, if not already present.
     if ~exist ( 'Spike Histograms' , 'File' ) == 0
         mkdir ( 'Spike Histograms' ) ;
@@ -241,18 +241,23 @@ for i = 1 : NFC
             OutputData ( j , 15 , i ) = 0 ;
             OutputData ( j , 16 , i ) = 0 ;
             OutputData ( j , 17 , i ) = 0 ;
+            OutputData ( l , 18 , i ) = 0 ;
         else
             HeightsBins = round ( max ( VoltagePeaks ) / ( min ( VoltagePeaks ) ) / 0.1) ;
             if HeightsBins > 512
                 HeightsBins = 512 ;
             end
-            HeightsHist = histfit ( VoltagePeaks , HeightsBins , DistType) ;
+            % Normal distribution might be a more appropriate fit for the
+            % spike heights. Also, double peaks appear if there has been a
+            % jump in the feedback during the measurement.
+            HeightsHist = histfit ( VoltagePeaks , HeightsBins , 'Normal' ) ;
             [ HMax , HIndex ] = max ( HeightsHist ( 1 ) . YData ) ;
             OutputData ( j , 14 , i ) = HeightsHist ( 1 ) . XData ( HIndex ) ;
             OutputData ( j , 15 , i ) = HMax ;
             HeightsDist =  fitdist ( VoltagePeaks , DistType )  ;
             OutputData ( j , 16 , i ) = HeightsDist . mu ;
             OutputData ( j , 17 , i ) = HeightsDist . sigma ;
+            OutputData ( j , 18 , i ) = mean ( VoltagePeaks ) ; % Mean peak height.
             if SaveHists == 1
                 title ( strcat ( FileGroup { i } ( 1 : end - 4 ) , { ' at ' } ,...
                     num2str ( VIterationRange ( j ) ) , ' V_p' ) ) ;
@@ -272,32 +277,33 @@ if SaveHists == 1 % Go back to main folder if histograms have been saved.
     cd ../ ;
 end
 
-%% Plot and fit data.
-iFit = 1 ; % Option index for rising edge fitting algorithms.
+%% Plotting options and fit data.
+% Hyperbolic tangent, iFit = 1 (Mehonic, Front. Neurosci., vol. 10, no.
+% 57, pp. 1?10, 2016.)
+tanhFit = 'a*(1+(tanh((b*x)-c)))' ;
+tanhTitle =  ' tanh fit = p_1 [ 1 + tanh ( p_2i_{set} - p_0 )]'  ;
+% Sigmoid, iFit = 2, probabilistic early deep neural network
+% "squishification" (3Blue1Brown, YouTube).
+SigmoidFit =  '(a/(1+exp(b*-x)))+c' ;
+SigmoidTitle =  ' sigmoid fit = [p_1 / (1 + e^{-p_2x})] + p_0'  ;
+% Softplus ReLU, iFit = 3 (rectified linear unit), more current
+% "squishifier" (3Blue1Brown, Youtube).
+SoftplusReLUFit = '(a*log(1+exp(b*x)))+c' ;
+SoftplusReLUETitle =  ' softplus ReLU fit = p_1ln(1+e^{p_2x}) + p_0' ;
+% Choose fit type for spikes per second data here.
+iFit = 1 ; % Fit type index.
 if iFit == 1
-    % Hyperbolic tangent, iFit = 1 (Mehonic, Front. Neurosci., vol. 10, no.
-    % 57, pp. 1?10, 2016.)
-    RisingThresholdFit = fittype ( 'a*(1+(tanh((b*x)-c)))' , 'Independent' ,...
-        'x' , 'Dependent' , 'y' ) ;
-    SpSUpper = [ 10000 10000 10000 ] ;
-    SpSLower = [ -10000 -10000 -10000 ] ;
-    SpSTitle =  'SpS tanh fit = p_1 [ 1 + tanh ( p_2i_{set} - p_0 )]'  ;
+    RisingThresholdFit = fittype ( tanhFit ,  'Independent' , 'x' ,...
+        'Dependent' , 'y' ) ;
+    FitTitle = tanhTitle ;
 elseif iFit == 2
-    % Sigmoid, iFit = 2, probabilistic early deep neural network
-    % "squishification" (3Blue1Brown, YouTube).
-    RisingThresholdFit =  fittype ( '(a/(1+exp(b*-x)))+c' , 'Independent' ,...
-        'x' , 'Dependent' , 'y' ) ;
-    SpSUpper = [ 10000 10000 10000 ] ;
-    SpSLower = [ -10000 -10000 -10000 ] ;
-    SpSTitle =  'SpS sigmoid fit = [p_1 / (1 + e^{-p_2x})] + p_0'  ;
+    RisingThresholdFit = fittype ( SigmoidFit ,  'Independent' , 'x' ,...
+        'Dependent' , 'y' ) ;
+    FitTitle = SigmoidTitle ;
 elseif iFit == 3
-    % Softplus ReLU, iFit = 3 (rectified linear unit), more current
-    % "squishifier" (3Blue1Brown, Youtube).
-    RisingThresholdFit = fittype ( '(a*log(1+exp(b*x)))+c' , 'Independent' ,...
-        'x' , 'Dependent' , 'y' ) ;
-    SpSUpper = [ 10000 10000 10000 ] ;
-    SpSLower = [ -10000 -10000 -10000 ] ;
-    SpSTitle =  'SpS softplus ReLU fit = p_1ln(1+e^{p_2x}) + p_0' ;
+    RisingThresholdFit = fittype ( SoftplusReLUFit,  'Independent' , 'x' ,...
+        'Dependent' , 'y' ) ;
+    FitTitle = SoftplusReLUTitle ;
 end
 FallingThresholdFit = fittype ( 'a*(1-(tanh((b*x)-c)))' , 'independent' ,...
     'x' , 'dependent' , 'y' ) ;
@@ -319,8 +325,8 @@ SpSFitOptions = fitoptions ( 'Method' , 'NonlinearLeastSquares' ) ;
 SpSFitOptions . Display = 'Off' ;
 SpSFitOptions . Robust = 'LAR' ;
 SpSFitOptions . StartPoint = [ 0 0 0 ] ;
-SpSFitOptions . Upper = SpSUpper ;
-SpSFitOptions . Lower = SpSLower ;
+SpSFitOptions . Upper = [ 10000 10000 10000 ] ;
+SpSFitOptions . Lower = [ -10000 -10000 -10000 ] ;
 for i = 1 : NumProms
     SpikesPerSecond = reshape ( OutputData ( i , 1 , : ) , NFC , 1 ) ;
     semilogx ( SetPoints , SpikesPerSecond , 'o' , 'Color' ,...
@@ -365,7 +371,7 @@ for i = 1 : NumProms
         legend ( 'BoxOff' ) ;
         set ( gca , 'FontSize' , 14 ) ;
         set ( gcf , 'Color' , 'w' ) ;
-        title ( SpSTitle ) ;
+        title ( strcat ( 'SpS' , FitTitle ) ) ;
         % p1 decreases power/logarithmically with threshold, just
         % indicating fewer spikes per second at higher thresholds. p2
         % increases linearly, which follows because the current se. p0
@@ -389,7 +395,7 @@ for i = 1 : NumProms
     set ( gca , 'FontSize' , 14 ) ;
     set ( gcf , 'Color' , 'w' ) ;
     hold on
-    [ TbSFit , TbSGoF ] = fit ( SetPoints , TimeBetweenSpikes , 'Power2' ,...
+    [ TbSFit , TbSGoF ] = fit ( SetPoints , TimeBetweenSpikes , 'Power2'  ,...
          TbSFitOptions ) ;
     TbS ( i , 1 ) = TbSFit . a ;
     TbS ( i , 2 ) = TbSFit . b ;
@@ -411,6 +417,50 @@ for i = 1 : NumProms
     end
 end
 
+%% Effective spike frequency.
+% i.e. at a given time, what frequency is the spiking pattern equivalent to.
+figure ;
+ESF = zeros ( NumProms , 4 ) ;
+ESFFitOptions = fitoptions ( 'Method' , 'NonlinearLeastSquares' ) ;
+ESFFitOptions . Display = 'Off' ;
+ESFFitOptions . Robust = 'LAR' ;
+ESFFitOptions . StartPoint = [ 0 0 0 ] ;
+for i = 1 : NumProms
+    EffectiveSpikeFreq = 1 ./ reshape ( OutputData ( i , 2 , : ) , NFC , 1 ) ;
+    semilogx ( SetPoints , EffectiveSpikeFreq , 'o' , 'Color' , ChosenColours ( i , : ) ) ;
+    xlabel ( 'Current bias/nA' ) ;
+    ylabel ( 'Effective spike frequency/Hz' ) ;
+    set ( gca , 'FontSize' , 14 ) ;
+    set ( gcf , 'Color' , 'w' ) ;
+    hold on
+    [ ESFFit , ESFGoF ] = fit ( SetPoints , EffectiveSpikeFreq , tanhFit  ,...
+         ESFFitOptions ) ;
+    ESF ( i , 1 ) = ESFFit . a ;
+    ESF ( i , 2 ) = ESFFit . b ;
+    ESF ( i , 3 ) = ESFFit . c ;
+    ESF ( i , 4 ) = ESFGoF . rsquare ;
+    % tanh fitting seems the most appropriate, here.
+    ESFModel = ESF ( i , 1 ) .* ( 1 + tanh ( ( ESF ( i , 2 ) .* VFittingRange ) -...
+     	ESF ( i , 3 ) ) ) ;
+%     ESFModel = ( ESF ( i , 1 ) ./ ( 1 + exp ( ESF ( i , 2 ) .* ( -1 ) .*...
+%     	VFittingRange ) ) ) + ESF ( i , 3 ) ;
+%     ESFModel = ( ESF ( i , 1 ) .* log ( 1 + exp ( ( ESF ( i , 2 ) .*...
+%         VFittingRange ) ) ) ) + ESF ( i , 3 ) ;
+    semilogx ( VFittingRange , ESFModel , 'Color' , ChosenColours ( i , : ) ) ;
+    % Also plot change in fitting parameters at end of loop.
+    if i == NumProms
+        figure ;
+        plot ( VIterationRange , ESF ( : , 1 ) , VIterationRange , ESF ( : , 2 ) ,...
+            VIterationRange , ESF ( : , 3 ) , 'LineWidth' , 2 ) ;
+        xlabel ( 'Prominence threshold/V' ) ;
+        ylabel ( 'Parameter value' ) ;
+        set ( gca , 'FontSize' , 14 ) ;
+        set ( gcf , 'Color' , 'w' ) ;
+        title ( 'ESF threshold fitting' ) ;
+        legend ( 'a' , 'b' , 'c' , 'Location' , 'NorthWest' ) ;
+    end
+end
+
 %% Modal spike width.
 figure ;
 SW = zeros ( NumProms , 4 ) ;
@@ -428,9 +478,9 @@ for i = 1 : NumProms
     hold on
 	[ SWFit , SWFitGoF ] = fit ( SetPoints , ModalSpikeWidths , '(a*exp(-b*x))+c' ,...
          SWFitOptions ) ; % Need to choose the best fitting option here.
-     % (a*log(1+exp(b*x)))+c, the softplus ReLU, works well.
-     % (a*exp(-b*x))+c, a single exponential, works well.
-     % (a/(1+exp(b*-x)))+c, a sigmoid, also works well.
+	 % (a*exp(-b*x))+c, a single exponential, works well.
+     % The softplus ReLU also works well.
+     % A sigmoid, also works well.
     SW ( i , 1 ) = SWFit . a ;
     SW ( i , 2 ) = SWFit . b ;
     SW ( i , 3 ) = SWFit . c ;
@@ -439,13 +489,14 @@ for i = 1 : NumProms
         VFittingRange ) ) + SW ( i , 3 ) , 'Color' , ChosenColours ( i , : ) ) ;
 end
 
-%% Modal energy per spike, as spike width x current setpoint x prominence.
+%% Modal energy per spike.
+% Energy per spike = modal spike FWHM x current setpoint x mean spike height.
 % Using prominence is an idealised case; this assumes that spikes aren't
 % typically much greater than the desired promience, in which case the
 % energy per SynOps would increase.
 figure ;
 EpS = zeros ( NumProms , 4 ) ;
-EpSFitOptions = fitoptions ( 'Method' , 'NonLinearLeastSquares' ) ;
+EpSFitOptions = fitoptions ( 'Method' , 'LinearLeastSquares' ) ;
 EpSFitOptions . Robust = 'LAR' ;
 % EpSFitOptions . Lower = [ -100 -100 ] ;
 % EpSFitOptions . Upper = [ 100 100 ] ;
@@ -455,21 +506,21 @@ for i = 1 : NFC
 end
 for i = 1 : NumProms
     EnergyPerSpike = reshape ( OutputData ( i , 6 , : ) , NFC , 1 ) .*...
-        SetPoints .* VIterationRange ( i ) ;
+        SetPoints .* reshape ( OutputData ( i , 18 , : ) , NFC , 1 ) ;
     loglog ( SetPoints , EnergyPerSpike , 'o' , 'Color' , ChosenColours ( i , : ) ) ;
     xlabel ( 'Current bias/nA' ) ;
     ylabel ( 'Energy per SynOps/nJ' ) ;
     set ( gca , 'FontSize' , 14 ) ;
     set ( gcf , 'Color' , 'w' ) ;
     hold on
-	[ EpSFit , EpSFitGoF ] = fit ( SetPoints , EnergyPerSpike , 'Power2' ,...
+	[ EpSFit , EpSFitGoF ] = fit ( SetPoints , EnergyPerSpike , 'Poly1' ,...
         EpSFitOptions ) ; % Linear fitting works best here.
-    EpS ( i , 1 ) = EpSFit . a ;
-    EpS ( i , 2 ) = EpSFit . b ;
-    SpS ( i , 3 ) = EpSFit . c ;
+    EpS ( i , 1 ) = EpSFit . p1 ;
+    EpS ( i , 2 ) = EpSFit . p2 ;
     EpS ( i , 4 ) = EpSFitGoF . rsquare ;
-    loglog ( VFittingRange , ( EpS ( i , 1 ) .* ( VFittingRange  .^ EpS ( i , 2 ) ) ) +...
-        EpS ( i , 3 ) , 'Color' , ChosenColours ( i , : ) ) ;
+    loglog ( VFittingRange , ( EpS ( i , 1 ) .* VFittingRange ) + EpS ( i , 2 ) ,...
+        'Color' , ChosenColours ( i , : ) ) ;
+    waitforbuttonpress;
 end
 
 %% Spike separation distribution.
