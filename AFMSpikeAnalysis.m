@@ -8,7 +8,7 @@ set ( 0 , 'DefaultFigureWindowStyle' , 'Docked' ) ;
 % corresponding to regions of constant stress (i.e. constant current or
 % voltage, or other data would also work). This is for spike analysis, i.e.
 % during stress, spiking occurs, and this script allows the user to look
-% at the distributions of spiking events and perform FFT. Typical input
+% at the distributions of spiking events. Typical input
 % data is absolute, sensitivity-corrected current/voltage/time floating
 % points, but the script should readily be adjusted for other data types.
 % As written, input files should be 3 ascii columns without a header;
@@ -79,22 +79,30 @@ for i = 1 : NFC
 end 
 % Higher resolution data range to use for fitting, if necessary.
 VFittingRange = SetPoints ( 1 ) : 0.01 : SetPoints ( end ) ;
+
 %% Process data to get ditributions of peak parameters.
 OutputData = zeros (NumProms , 17 , NFC ) ;
 % Data columns in output array:
 % 1) spikes per second (SpS), 2) modal spike separation (max in histogram)
-% 3) frequency of SpS (from histogram), 4) SpS distribution µ, 5) SpS distribution ?.
+% 3) frequency of SpS (from histogram), 4) SpS distribution µ, 5) SpS distribution sigma.
 % 6) modal spike width (max in histogram), 7) frequency of max width (from
-% histogram), 8) width distribution µ, 9) width distribution ?, 10) modal
+% histogram), 8) width distribution µ, 9) width distribution sigma, 10) modal
 % spike prominence (max in histogram), 11) frequency of max prominence
-% (from histogram), 12) prominence µ, 13) prominence ?, 14) modal spike
+% (from histogram), 12) prominence µ, 13) prominence sigma, 14) modal spike
 % height (max in histogram), 15) frequency of max height (from histogram),
-% 16) height µ, 17) height ?.
+% 16) height µ, 17) height sigma.
 
 MinPeakHeight = 0 ; % Minimum absolute peak height in V.
 MinPeakWidth = 0 ; % Minimum peak width threshold in s.
 MaxPeakWidth = 5 ; % Maximum peak width threshold in s.
 DistType = 'LogNormal' ;  % Type of distribution to fit.
+SaveHists = 1 ; % Histograms can be saved if SaveHists == 1.
+if SaveHists == 1 % New folder to put histograms in, if not already present.
+    if ~exist ( 'Spike Histograms' , 'File' ) == 0
+        mkdir ( 'Spike Histograms' ) ;
+    end
+    cd ./'Spike Histograms'
+end
 % For lognormal, fitting parameters µ (median) and ? (scatter) are used.
 for i = 1 : NFC
     % Find spikes (peaks) in the data. This section looks through each file
@@ -111,7 +119,25 @@ for i = 1 : NFC
             'MinPeakProminence' , VIterationRange ( j ) , 'MinPeakHeight' ,...
             MinPeakHeight , 'WidthReference' , 'HalfProm' , 'MinPeakWidth' ,...
             MinPeakWidth , 'MaxPeakWidth' , MaxPeakWidth ) ;
-        % Get distributions of values.
+        if SaveHists == 1
+            findpeaks ( DataArray { i } { 3 } , SampleFrequency ( i ) , ...
+            'MinPeakProminence' , VIterationRange ( j ) , 'MinPeakHeight' ,...
+            MinPeakHeight , 'WidthReference' , 'HalfProm' , 'MinPeakWidth' ,...
+            MinPeakWidth , 'MaxPeakWidth' , MaxPeakWidth ) ; 
+            title ( strcat ( FileGroup { i } ( 1 : end - 4 ) , { ' at ' } ,...
+                num2str ( VIterationRange ( j ) ) , ' V_p' ) ) ;
+            xlabel ( 'Time/s' ) ;
+            ylabel ( 'Voltage/V' ) ;
+            set ( gca , 'FontSize' , 16 ) ;
+            set ( gcf , 'Color' , 'w' ) ;
+            saveas ( gcf , char ( strcat ( 'Spikesection,' ,  { ' ' } ,...
+                FileGroup { i } ( 1 : end - 4 ) ,...
+                num2str ( VIterationRange ( j ) ) , ' V prominence.tif' ) ) ) ;
+        end
+        % Get distributions of values. Binning of separations and widths is
+        % applied such that the resolution of the bins is around half the
+        % smallest difference between values. Binning of prominences and
+        % heights is applied such that the bins are around 0.1 V.
         % Number of peaks per second.
         OutputData ( j , 1 , i ) = numel ( VoltagePeaks ) / DataArray { i } { 1 } ( end ) ;
         %% Spike separation.
@@ -137,15 +163,17 @@ for i = 1 : NFC
             SepDist = fitdist ( VPeakSeps , DistType ) ;
             OutputData ( j , 4 , i ) = SepDist . mu ;
             OutputData ( j , 5 , i ) = SepDist . sigma ;
-            xlabel ( 'Peak separation/s' ) ;
-            ylabel ( 'Counts' ) ;
-            title ( strcat ( FileGroup { i } ( 1 : end - 4 ) , { ' at ' } ,...
-                num2str ( VIterationRange ( j ) ) , ' V prominence' ) ) ;
-            set ( gca , 'FontSize' , 16 ) ;
-            set ( gcf , 'Color' , 'w' ) ;
-            % Histograms can be plotted and/or saved.
-%             saveas ( gcf , char ( strcat ( 'SpikeSepHist,' , { ' ' } ,...
-%                 num2str ( VPromThresh ) , ' V prominence.tif' ) ) ) ;
+            if SaveHists == 1
+                title ( strcat ( FileGroup { i } ( 1 : end - 4 ) , { ' at ' } ,...
+                    num2str ( VIterationRange ( j ) ) , ' V_p' ) ) ;
+                xlabel ( 'Spike separation/s' ) ;
+                ylabel ( 'Counts' ) ;
+                set ( gca , 'FontSize' , 16 ) ;
+                set ( gcf , 'Color' , 'w' ) ;
+                saveas ( gcf , char ( strcat ( 'SepsHist,' ,  { ' ' } ,...
+                    FileGroup { i } ( 1 : end - 4 ) ,...
+                    num2str ( VIterationRange ( j ) ) , ' V prominence.tif' ) ) ) ;
+            end
         end
         %% Spike widths.
         if numel ( VoltageWidths ) < 2
@@ -165,14 +193,17 @@ for i = 1 : NFC
             WidthDist =  fitdist ( VoltageWidths , DistType )  ;
             OutputData ( j , 8 , i ) = WidthDist . mu ;
             OutputData ( j , 9 , i ) = WidthDist . sigma ;
-            xlabel ( 'Peak width/s' ) ;
-            ylabel ( 'Counts' ) ;
+            if SaveHists == 1
             title ( strcat ( FileGroup { i } ( 1 : end - 4 ) , { ' at ' } ,...
-                num2str ( VIterationRange ( j ) ) , ' V prominence' ) ) ;
+                num2str ( VIterationRange ( j ) ) , ' V_p' ) ) ;
+            xlabel ( 'Spike width/s' ) ;
+            ylabel ( 'Counts' ) ;
             set ( gca , 'FontSize' , 16 ) ;
-            set ( gcf , 'Color' , 'w' ) ;            
-%             saveas ( gcf , char ( strcat ( 'SpikeWidthHist,' , { ' ' } ,...
-%                 num2str ( VPromThresh ) , ' V prominence.tif' ) ) ) ;
+            set ( gcf , 'Color' , 'w' ) ;
+                saveas ( gcf , char ( strcat ( 'WidthHist,' , { ' ' } ,...
+                    FileGroup { i } ( 1 : end - 4 ) ,...
+                    num2str ( VIterationRange ( j ) ) , ' V prominence.tif' ) ) ) ;
+            end
         end
         %% Spike prominences.
         if numel ( VoltageProms ) < 2
@@ -181,7 +212,7 @@ for i = 1 : NFC
             OutputData ( j , 12 , i ) = 0 ;
             OutputData ( j , 13 , i ) = 0 ;
         else
-            PromsBins = round ( max ( VoltageProms ) / ( min ( VoltageProms ) / 2 ) ) ;
+            PromsBins = round ( max ( VoltageProms ) / ( min ( VoltageProms ) ) / 0.1 ) ;
             if PromsBins > 512
                 PromsBins = 512 ;
             end
@@ -192,6 +223,17 @@ for i = 1 : NFC
             PromsDist =  fitdist ( VoltageProms , DistType )  ;
             OutputData ( j , 12 , i ) = PromsDist . mu ;
             OutputData ( j , 13 , i ) = PromsDist . sigma ;
+            if SaveHists == 1
+            title ( strcat ( FileGroup { i } ( 1 : end - 4 ) , { ' at ' } ,...
+                num2str ( VIterationRange ( j ) ) , ' V_p' ) ) ;
+            xlabel ( 'Spike prominences/V' );
+            ylabel ( 'Counts' ) ;
+            set ( gca , 'FontSize' , 16 ) ;
+            set ( gcf , 'Color' , 'w' ) ;
+            saveas ( gcf , char ( strcat ( 'PromsHist,' , { ' ' } ,...
+                    FileGroup { i } ( 1 : end - 4 ) ,...
+                    num2str ( VIterationRange ( j ) ) , ' V prominence.tif' ) ) ) ;
+            end
         end
         %% Spike heights.
         if numel ( VoltagePeaks ) < 2
@@ -200,7 +242,7 @@ for i = 1 : NFC
             OutputData ( j , 16 , i ) = 0 ;
             OutputData ( j , 17 , i ) = 0 ;
         else
-            HeightsBins = round ( max ( VoltagePeaks ) / ( min ( VoltagePeaks ) / 2 ) ) ;
+            HeightsBins = round ( max ( VoltagePeaks ) / ( min ( VoltagePeaks ) ) / 0.1) ;
             if HeightsBins > 512
                 HeightsBins = 512 ;
             end
@@ -211,14 +253,27 @@ for i = 1 : NFC
             HeightsDist =  fitdist ( VoltagePeaks , DistType )  ;
             OutputData ( j , 16 , i ) = HeightsDist . mu ;
             OutputData ( j , 17 , i ) = HeightsDist . sigma ;
+            if SaveHists == 1
+                title ( strcat ( FileGroup { i } ( 1 : end - 4 ) , { ' at ' } ,...
+                    num2str ( VIterationRange ( j ) ) , ' V_p' ) ) ;
+                xlabel ( 'Spike heights/V' );
+                ylabel ( 'Counts' ) ;
+                set ( gca , 'FontSize' , 16 ) ;
+                set ( gcf , 'Color' , 'w' ) ;    
+                saveas ( gcf , char ( strcat ( 'HeightsHist,' , { ' ' } ,...
+                        FileGroup { i } ( 1 : end - 4 ) ,...
+                        num2str ( VIterationRange ( j ) ) , ' V prominence.tif' ) ) ) ;
+            end
         end
     end
 end
-close ;
+close ; % Closes histogram figure.
+if SaveHists == 1 % Go back to main folder if histograms have been saved.
+    cd ../ ;
+end
 
 %% Plot and fit data.
-% Option of rising edge threshold fitting algorithms.
-iFit = 1 ;
+iFit = 1 ; % Option index for rising edge fitting algorithms.
 if iFit == 1
     % Hyperbolic tangent, iFit = 1 (Mehonic, Front. Neurosci., vol. 10, no.
     % 57, pp. 1?10, 2016.)
@@ -246,8 +301,6 @@ elseif iFit == 3
 end
 FallingThresholdFit = fittype ( 'a*(1-(tanh((b*x)-c)))' , 'independent' ,...
     'x' , 'dependent' , 'y' ) ;
-%% Number of spikes per second (from entire range).
-figure ;
 iColours = 3 ; % Choose colour set to plot with.
 if iColours == 1 % Creates rainbow colour set.
     ChosenColours = jet (NumProms ) ;
@@ -256,6 +309,11 @@ elseif iColours == 2 % Creates the most distinct colour set.
 elseif iColours == 3 % Creates another colour set.
     ChosenColours = lines ( NumProms ) ;
 end
+
+%% Number of spikes per second (from entire range).
+% i.e. taking the total number of detected spikes and dividing by the total
+% sampling time.
+figure ;
 SpS = zeros ( NumProms , 4 ) ;
 SpSFitOptions = fitoptions ( 'Method' , 'NonlinearLeastSquares' ) ;
 SpSFitOptions . Display = 'Off' ;
@@ -315,7 +373,9 @@ for i = 1 : NumProms
         % at very low current bias.
     end
 end
+
 %% Modal time between spikes.
+% i.e. how close together in time can we expect spikes to be.
 figure ;
 TbS = zeros ( NumProms , 4 ) ;
 TbSFitOptions = fitoptions ( 'Method' , 'NonlinearLeastSquares' ) ;
@@ -341,15 +401,16 @@ for i = 1 : NumProms
     if i == NumProms
         figure ;
         plot ( VIterationRange , TbS ( : , 1 ) , VIterationRange , TbS ( : , 2 ) ,...
-            'LineWidth' , 2 ) ;
+            VIterationRange , TbS ( : , 3 ) , 'LineWidth' , 2 ) ;
         xlabel ( 'Prominence threshold/V' ) ;
         ylabel ( 'Parameter value' ) ;
         set ( gca , 'FontSize' , 14 ) ;
         set ( gcf , 'Color' , 'w' ) ;
         title ( 'TbS threshold fitting' ) ;
-        legend ( 'a' , 'b' , 'Location' , 'NorthWest' ) ;
+        legend ( 'a' , 'b' , 'c' , 'Location' , 'NorthWest' ) ;
     end
 end
+
 %% Modal spike width.
 figure ;
 SW = zeros ( NumProms , 4 ) ;
@@ -377,6 +438,7 @@ for i = 1 : NumProms
     loglog ( VFittingRange , ( SW ( i , 1 ) .* exp ( ( -1 ) .* SW ( i , 2 ) .*...
         VFittingRange ) ) + SW ( i , 3 ) , 'Color' , ChosenColours ( i , : ) ) ;
 end
+
 %% Modal energy per spike, as spike width x current setpoint x prominence.
 % Using prominence is an idealised case; this assumes that spikes aren't
 % typically much greater than the desired promience, in which case the
@@ -409,6 +471,7 @@ for i = 1 : NumProms
     loglog ( VFittingRange , ( EpS ( i , 1 ) .* ( VFittingRange  .^ EpS ( i , 2 ) ) ) +...
         EpS ( i , 3 ) , 'Color' , ChosenColours ( i , : ) ) ;
 end
+
 %% Spike separation distribution.
 figure ;
 for i = 1 : NumProms
@@ -425,6 +488,7 @@ for i = 1 : NumProms
         'Color' , ChosenColours ( i , : ) ) ;
         ylabel ( 'Spike separation {\sigma}/--' ) ;
 end
+
 %% Spike width distribution.
 figure ;
 for i = 1 : NumProms
@@ -441,6 +505,7 @@ for i = 1 : NumProms
         'Color' , ChosenColours ( i , : ) ) ;
         ylabel ( 'Spike width {\sigma}/--' ) ;
 end
+
 %% Spike prominence distribution.
 figure ;
 for i = 1 : NumProms
@@ -457,6 +522,7 @@ for i = 1 : NumProms
         'Color' , ChosenColours ( i , : ) ) ;
         ylabel ( 'Spike prominence {\sigma}/--' ) ;
 end
+
 %% Modal spike heights.
 figure ;
 for i = 1 : NumProms
@@ -469,6 +535,7 @@ for i = 1 : NumProms
     set ( gcf , 'Color' , 'w' ) ;
     hold on
 end
+
 %% Spike height distribution.
 figure ;
 for i = 1 : NumProms
