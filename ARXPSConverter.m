@@ -1,8 +1,20 @@
 clear
 clc
 
-%% Import and reformat ARXPS data files to split out all angles and depths
-% so that they import more readily into CasaXPS.
+%% Import and reformat combined ARXPS/depth pofilf data files to
+% split out all angles and depths. This script can be used on .avg files that
+% have been converted from Thermo Scientific Avantage measurements.
+% Unfortunately, converting these files directly in CasaXPS produces a
+% messy tile arrangement, with lots of missing data. Instead, this script
+% will collate all the blocks of data and produce a new set of .avg files
+% corresponding to each emission angle. Data files may be processed
+% inidividually (i.e. a single file for a region spectra), or as a batch
+% (i.e. all regions and survey spectra from a measurement). CasaXPS may
+% then be used to convert a single region file to Vamas data, and all
+% associated emission angle files will be processed together, giving a
+% single .vms file that contains all the data for angle and depth/etch
+% time. An equation is also produced to perform a summation of all data for
+% a single angle.
 
 %% Choose data files, which should be .avg files.
 
