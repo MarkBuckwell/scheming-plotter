@@ -1,0 +1,47 @@
+clear % Clears variables.
+clc % Clears commands.
+
+%% Models impedance mismatch effect of voltage dropping off rapidly as device forms.
+% Useful in thinking about how the behaviour of measurements made using
+% conductive atomic force microscopy might differ from those made using a
+% semiconductor parameter analyser, as a result of impedance mismatch. I.e.
+% the voltage drop across the CAFM probe/contact becomes significant for
+% low sample resistances. This is a significant issue in studying
+% resistance switching devices/memristors.
+
+Vip = 10 ; % Input voltage across device and probe.
+Vik = 3 ; % Input voltage across device and Keithley.
+Rd = 10 : 10 : 1E8 ; % Device resistance.
+%Rdp = Rd .* 1 ; % Device resistance when using probe.
+%Rdk = Rd .* 1 ; % Device resistance when using Keithley.
+Rp = 1E4 ; % Probe output impedance.
+Rk = 50 ; % Keithley output impedance.
+
+Vop = ( Vip ./ ( Rp + Rd ) ) .* Rd ; % Outut voltage across device when using probe from Luca's equation.
+Vok = ( Vik ./ ( Rk + Rd ) ) .* Rd ; % Outut voltage across device when using Keithley from Luca's equation.
+% Vd = Vok - Vop ; % Difference in voltage.
+
+Ip = Vip ./ ( Rd + Rp ) .* 1000 ; % Current in device when using probe, scaled to mA.
+Ik = Vik ./ ( Rd + Rk ) .* 1000 ; % Current in device when using Keithley, scaled to mA.
+% Id = ( Ik - Ip ) ; % Difference in current.
+
+
+%% Plot device voltage against device resistance.
+figure ;
+semilogx ( Rd , Vop , Rd , Vok , 'Linewidth' , 6 ) ;
+legend ( 'CAFM probe' , 'Keithley' , 'Location' , 'West' ) ;
+set ( gca , 'FontSize' , 38 , 'XDir' , 'Reverse' ) ;
+xlabel ( 'Device resistance (Ohms) - effective time axis ' ) ;
+ylabel ( 'Device voltage (V)' ) ;
+xlim ( gca , [ 100 1E8 ] ) ;
+% ylim ( gca , [ 6 7 ] ) ;
+
+%% Plot device current against device resistance.
+figure ;
+loglog ( Rd , Ip , Rd , Ik , 'Linewidth' , 6 ) ;
+legend ( 'CAFM probe' , 'Keithley' , 'Location' , 'NorthWest' ) ;
+set ( gca , 'FontSize' , 38 , 'XDir' , 'Reverse' ) ;
+xlabel ( 'Device resistance (Ohms) - effective time axis ' ) ;
+ylabel ( 'Device current (mA)' ) ;
+xlim ( gca , [ 100 1E8 ] ) ;
+ylim ( gca , [ 0 10 ] ) ;
