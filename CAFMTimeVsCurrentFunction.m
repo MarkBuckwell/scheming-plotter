@@ -1,6 +1,7 @@
 function [ OutputData , CharArray , SetThreshold , VIterationRange , h ] = CAFMTimeVsCurrentFunction ( )
 
 set ( 0 , 'DefaultFigureWindowStyle' , 'Normal' ) ;
+h = 0 ; % Initial condition to not end looping.
 
 %% Imports and plots current data in time from  2-column AFM data.
 % Exported as a .txt file from a 2D image file, should be a 0D scan in
@@ -52,7 +53,7 @@ CurrentPerFile = repmat ( { [ 0 , 0 ] } , 1 , NFC ) ;
 VoltagePerFile = CurrentPerFile ;
 
 %% Import data.
-
+figure ;
 for i = 1 : NFC
 
     if NFC == 1 
@@ -126,18 +127,15 @@ for i = 1 : NFC
 
     % Time per sample.
     SampleTime ( i , 1 ) = 1 ./ ( ScanRate .* 2 .* SamplesPerLine ) ;
-
     % Opens and reads selected file data to temporary array.
     frewind ( FileChoice ) ;
     DataArray ( : , : , i ) = textscan ( FileChoice , FormatSpec , 'Delimiter' ,...
         '\t' , 'EmptyValue' , NaN , 'HeaderLines' , HeaderRow  , 'ReturnOnError' , false ) ;
     fclose ( FileChoice ) ;
-
     % Check that the data is the correct length.
     for j = 1 : size ( DataArray , 2 )
 
         RealLines ( i , j ) = size ( DataArray { 1 , j , i } , 1 ) ;
-
         if RealLines ( i , j ) ~= NumLines * SamplesPerLine
 
             disp ( strcat ( 'Data length is incorrect. There should be' ,...
@@ -153,13 +151,11 @@ for i = 1 : NFC
         end
 
     end
-
     %% Get indices of current and voltage data columns.
     iC = find ( not ( cellfun ( 'isempty' , ( strfind ( DataHeaders ,...
         'C-AFM' ) ) ) ) ) ;
     iV = find ( not ( cellfun ( 'isempty' , ( strfind ( DataHeaders ,...
         'Input' ) ) ) ) ) ;
-
     % Makes current absolute.
     DataArray { : , iC ( 1 ) , i } = abs ( DataArray { : , iC ( 1 ) , i } ) .* CurrentSens ;
 
@@ -168,20 +164,17 @@ for i = 1 : NFC
         DataArray { : , iC ( 2 ) , i } = abs ( DataArray { : , iC ( 2 ) , i } ) .* CurrentSens ;
 
     end
-
     %% Section to check data direction.
     % Scan direction - data must be flipped for up scans, as Nanoscpe
     % exports under the assumption that a 2D image has been acquired, not a
     % 0D image wherein the first line of a new image should correspond to
     % the top rather than the bottom. i.e. we are interested in the
     % evolution of current/voltage in time, not in space.
-
     DirCell = find ( not ( cellfun ( 'isempty' , ( strfind ( CalArray ,...
         'direction' ) ) ) ) ) ;
     ScanDir = textscan ( CalArray { DirCell ( 2 ) } , '%s' ) ;
     ScanDir = ScanDir { 1 } ( 3 ) ;
     DirCheck = strfind ( ScanDir , 'Down' ) ;
-
     % Rotate all data according to whether up or down scan.
     if isempty ( DirCheck { 1 } ) == 1 % i.e. if it is an up scan.
 
@@ -204,25 +197,27 @@ for i = 1 : NFC
         end
 
     end
-
     %% Section to combine trace/retrace data.
-
     % Interpolate/concatenate trace and retrace current and voltage into a single
     % column, sorting by sets of length SamplesPerLine, and generate time
     % values. Assumes first current column is trace data and second is
     % retrace, because Nanoscpe appears to label all exported data as
     % trace, so this cannot be determined from the data headers.
-    
     k = 0 ; % Index for user to check correct import direction.
     TraceFirst = 1 ; % 0 if retrace data is first. Trace first as default.
-
+    % "Trace" and "retrace" are actually misnomers here, because it is not
+    % clear from the ASCII file which column is which. Therefore, the
+    % labelling of trace and retrace in this script is just arbitraty, and
+    % the user should determine which import direction is correct.
     while k < 1
+        % Arrays to hold intermin current and votlage values.
+        CurrentCheck = CurrentAndTime ( end , : ) ;
+        VoltageCheck = VoltageAndTime ( end , : ) ;
 
         for j = 1 : NumLines
 
             clear CurrentLine
             clear VoltageLine
-
             % Remove starting artefact. Unsure of cause, could be an export
             % issue.
             if size ( iV , 2 ) == 2 && j == 1 && mode ( DataArray { 1 , iV ( 2 ) , i } ( 1 , : ) ) < 0.0019
@@ -231,10 +226,15 @@ for i = 1 : NFC
                 DataArray { 1 , iV ( 2 ) , i } ( 1 , : ) = 0 ;
 
             end
-
             % Combine trace and retrace data lines. Retrace data is generally
-            % first, although sometimes trace is first. Not sure why yet.
-
+            % first, although sometimes trace is first. Not sure why yet,
+            % although it might be because the data direction is not
+            % labelled in the exported ASCII file, i.e. the scan direction
+            % (up/down) flips the direction of the output columns for trace
+            % and retrace data. This section should remove the actual
+            % dependence on which data is trace and which is retrace, just
+            % allowing the user to make sure that what they import is the
+            % right way round.
             if TraceFirst == 0
 
                 CurrentLine ( : , 2 ) = horzcat ( flip (...
@@ -266,33 +266,38 @@ for i = 1 : NFC
                 end
 
             else
-
-                % Just duplicate voltage data if only a single direction was
+                % Just duplicate first or last voltage value if only a single direction was
                 % captured.
+                if TraceFirst == 0
 
-                VoltageLine ( : , 1 ) = abs ( horzcat (...
+                    VoltageLine ( : , 1 ) = abs ( horzcat (...
+                    ( DataArray { 1 , iV , i } ( j , : ) .* 0 ) +...
+                    DataArray { 1 , iV , i } ( j , 1 ) ,...
+                    DataArray { 1 , iV , i } ( j , : ) ) )' ;
+
+                elseif TraceFirst == 1
+
+                    VoltageLine ( : , 1 ) = abs ( horzcat (...
                     DataArray { 1 , iV , i } ( j , : ) ,...
                     ( DataArray { 1 , iV , i } ( j , : ) .* 0 ) +...
                     DataArray { 1 , iV , i } ( j , end ) ) )' ;
 
+                end
+                
             end
-
             % Generate sampling times and time axis.
-            StartTime = CurrentAndTime ( end , 1 ) ;
+            StartTime = CurrentCheck ( end , 1 ) ;
             FinishTime = StartTime + ( 2 * SamplesPerLine * SampleTime ( i , 1 ) ) - SampleTime ;
             CurrentLine ( : , 1 ) = ( StartTime : SampleTime ( i , 1 ) : FinishTime )' ;
             % Include voltage recorded in file.
             VoltageLine ( : , 2 ) = ApplV ;
-
-            % Concatenate new values to previous.
-            CurrentAndTime = vertcat ( CurrentAndTime , CurrentLine ) ;
-            VoltageAndTime = vertcat ( VoltageAndTime , VoltageLine ) ;
-            CurrentPerFile { i } = vertcat ( CurrentPerFile { i } , CurrentLine ) ;
-            VoltagePerFile { i } = vertcat ( VoltagePerFile { i } , VoltageLine ) ;
-
+            % Make test vectors to check import direction is correct.
+            CurrentCheck = vertcat ( CurrentCheck , CurrentLine ) ;
+            VoltageCheck = vertcat ( VoltageCheck , VoltageLine ) ;
+            
             if j == 1
 
-                SampleTime ( i , 2 ) = CurrentLine ( 1 , 1 ) ; % Start time of file.
+                SampleTime ( i , 2 ) = CurrentAndTime ( end , 1 ) ; % Start time of file.
 
             elseif j == NumLines
 
@@ -301,23 +306,35 @@ for i = 1 : NFC
             end
 
         end
-        
-        figure ;
-        plot ( VoltageAndTime ( : , 1 ) ) ; % Quickly look at data to check.
+        % Quickly look at data to check direction of import is correct.
+        clf
+        yyaxis left
+        semilogy ( vertcat ( CurrentAndTime ( : , 2 ) , CurrentCheck ( : , 2 ) ) ,...
+            'LineWidth' , 2 ) ;
+        ylabel ( 'Current [nA]' ) ;
+        hold on
+        semilogy ( smooth ( vertcat ( CurrentAndTime ( : , 2 ) ,...
+            CurrentCheck ( : , 2 ) ) , 256 , 'sgolay' , 1 ) , '-' ,...
+            'LineWidth' , 2 , 'Color' , 'y') ;
+        yyaxis right
+        plot ( vertcat ( VoltageAndTime ( : , 1 ) , VoltageCheck ( : , 1 ) ) ,...
+            'o' , 'LineWidth' , 2 ) ;
+        ylabel ( 'Voltage [V]' );
         set ( gcf , 'Color' , 'w' , 'units' , 'normalized' , 'outerposition' , [ 0 0 1 1 ] ) ;
+        set ( gca , 'FontSize' , 18 ) ;
         DirAnswer = questdlg ( 'Is data import direction correct?' , 'Check import direction.' ) ;
-        close ;
         switch DirAnswer
             
             case 'Yes'
-                
+                % Concatenate new values to previous.
+                CurrentAndTime = vertcat ( CurrentAndTime , CurrentCheck ( 2 : end , : )  ) ;
+                VoltageAndTime = vertcat ( VoltageAndTime , VoltageCheck ( 2 : end , : ) ) ;
+                CurrentPerFile { i } = vertcat ( CurrentPerFile { i } , CurrentCheck ( 2 : end , : ) ) ;
+                VoltagePerFile { i } = vertcat ( VoltagePerFile { i } , VoltageCheck ( 2 : end , : ) ) ;
                 k = 1 ; % End loop and proceed.
                 
             case 'No'
-                
-                % Clear previous data and try again with opposite import direction.
-                CurrentAndTime = zeros ( 1 , 2 ) ;
-                VoltageAndTime = zeros ( 1 , 2 ) ;
+                % Loop back round and try again with opposite import direction.
                 TraceFirst = abs ( TraceFirst - 1 ) ;
                 
             case 'Cancel'
@@ -327,13 +344,10 @@ for i = 1 : NFC
         end
                             
     end
-
+    
     %% Remove starting values.
-
     CurrentPerFile { i } ( 1 , : ) = [] ;
     VoltagePerFile { i } ( 1 , : ) = [] ;
-
-    PrevTime = FinishTime ;
 
 end
 
@@ -345,17 +359,6 @@ VoltageAndTime ( 1 , : ) = [] ;
 FilterWidth = 256 ;
 CurrentAndTime ( : , 3 ) = smooth ( CurrentAndTime ( : , 2 ) , FilterWidth , 'sgolay' , 1 ) ;
 VoltageAndTime ( : , 3 ) = smooth ( VoltageAndTime ( : , 1 ) , FilterWidth , 'sgolay' , 1 ) ;
-
-%% Additional metrics; ressitance and conductance.
-
-% ResistanceAndTime = VoltageAndTime ;
-% ResistanceAndTime ( : , 1 ) = ResistanceAndTime ( : , 1 ) ./ ( CurrentAndTime ( : , 2 ) .* 1E-9 ) ;
-% ResistanceAndTime ( : , 2 ) = ResistanceAndTime ( : , 2 ) ./ ( CurrentAndTime ( : , 2 ) .* 1E-9 ) ;
-% ConductanceAndTime = ResistanceAndTime ;
-% G0 = 2 * ( 1.60217662E-19 ^ 2 ) / 6.62607004E-34 ;
-% ConductanceAndTime ( : , 1 ) = ( 1 ./ ( ConductanceAndTime ( : , 1 ) ) ) ./ G0 ;
-% ConductanceAndTime ( : , 2 ) = ( 1 ./ ( ConductanceAndTime ( : , 2 ) ) ) ./ G0 ;
-% SmoothResistance = smooth ( ResistanceAndTime ( : , 2 ) , 32 , 'sgolay' , 1 ) ;
 
 %% Determine whether measurement is constant current or constant voltage.
 
@@ -380,8 +383,6 @@ if  ~contains ( FeedbackType , 'Dis' ) == 1 % For constant current mode, i.e. TU
     SetPoint = sprintf ( '%g' , ConstantSens * str2double ( SetPoint { 1 } { 7 } ) ) ;
     DataTitle = strcat ( 'Constant' , { ' ' } , SetPoint , { ' ' } , 'nA stress' ) ;
     CharArray ( 1 ) = abs ( str2double ( SetPoint ) ) ;
-
-    figure ;
 
     yyaxis left
     semilogy ( CurrentAndTime ( : , 1 ) , CurrentAndTime ( : , 3 ) , '-' ) ;
@@ -413,20 +414,17 @@ else % For constant voltage mode, i.e. TUNAList is Disabled.
     tV = 2 ;
     tI = 1 ; % Setting to 3 seems to avoid artefacts and catch some part of the first BD peak.
     OnsetCurrent = 1 ; % Define onset current in nA.
-
     DataTitle = strcat ( num2str ( round ( max ( VoltageAndTime ( : , 1 ) ) , 2 ) ) , ' V applied' ) ;
     disp ( strcat ( 'At a constant' , { ' ' } , DataTitle ) ) ;
     CharArray ( 1 ) = round ( max ( VoltageAndTime ( : , 1 ) ) , 2 ) ;
-
     % Determine current and time values relative to when voltage swithced on.
     % Display the time at which the current threshold is exceeded.
-
     if size ( iV , 2 ) == 1
         % Best pracrise to use current spike artifact if only one voltage
         % direction is recorded, because the actual onset of voltage might
         % be lost in the un-recorded direction.
         IStart = findchangepts ( VoltageAndTime ( : , 1 ) , 'MaxNumChanges' , 20 ) ;
-        VStart = findchangepts ( CurrentAndTime ( IStart ( tV )- 1024 :...
+        VStart = findchangepts ( CurrentAndTime ( IStart ( tV ) - 1024 :...
             IStart ( tV ) + 1024 , 2 ) , 'MaxNumChanges' , 20 ) + IStart ( tV ) - 1024 ;
 
     else
@@ -442,7 +440,6 @@ else % For constant voltage mode, i.e. TUNAList is Disabled.
 
     %% Section for plotting V or I vs time and saving plots.
 
-    figure ;
     subplot ( 2 , 1 , 1 ) ;
 
     yyaxis left
@@ -494,10 +491,10 @@ else % For constant voltage mode, i.e. TUNAList is Disabled.
 
 end
 
-%% Section for peak analysis of signal or part(s) of signal.
+%% Section to crop and save data for peak analysis of signal or part(s) of signal.
 
 figure ;
-subplot ( 3 , 1 , 1 ) ;
+subplot ( 4 , 1 , 1 ) ;
 yyaxis left
 semilogy ( CurrentAndTime ( : , 1 ) , CurrentAndTime ( : , 2 ) ) ;
 ylabel ( 'Current/nA' ) ;
@@ -508,28 +505,29 @@ ylabel ( 'Voltage/V' ) ;
 set ( gca , 'FontSize' , 24 ) ;
 set ( gcf , 'Color' , 'w' , 'units' , 'normalized' , 'outerposition' , [ 0 0 1 1 ] ) ;
 
-BoundDefault = { '0' , '0' , '0' , '0.2' , '0' , '0.1' } ;
+BoundDefault = { '0' , '0' , '0' , '0.2' , '0' , '5000' } ;
 a = 0 ; % Peak analysis index.
 while a < 1 % Choose appropriate crop/sampling region and perform peak analysis.
 
-    % Get user input of time to sample between.
+	% Get user input of time to sample between.
     BoundPrompt = { 'Enter lower bound time:' , 'Enter upper bound time:' ,...
-            'Enter voltage peak height threshold (in V above local background):' ,...
+            'Enter voltage peak height threshold (in V):' ,...
             'Enter voltage peak prominence threshold (in V):' ,...
-            'Enter current peak height threshold (in nA above local background):' ,...
-            'Enter current peak prominence threshold (in nA):' } ;
+            'Enter voltage peak width minimum (in ms):' ,...
+            'Enter voltage peak width maximum (in ms)):' } ;
     BoundTitle = 'Sampling region input.' ;
     BoundAnswer = inputdlg ( BoundPrompt , BoundTitle , 1 , BoundDefault ) ;
     LowerTime = str2double ( BoundAnswer { 1 } ) ;
     UpperTime = str2double ( BoundAnswer { 2 } ) ;
     VPeakThresh = str2double ( BoundAnswer { 3 } ) ;
     VPromThresh = str2double ( BoundAnswer { 4 } ) ;
-    CPeakThresh = str2double ( BoundAnswer { 5 } ) ;
-    CPromThresh = str2double ( BoundAnswer { 6 } ) ;
+    VWidthMin = str2double ( BoundAnswer { 5 } ) / 1000 ;
+    VWidthMax = str2double ( BoundAnswer { 6 } ) / 1000 ;
 
     [ LMin , LowerBound ] = min ( abs ( CurrentAndTime ( : , 1 ) - LowerTime ) ) ;
     [ UMin , UpperBound ] = min ( abs ( CurrentAndTime ( : , 1 ) - UpperTime ) ) ;
 
+    VIterationRange = 0 : VPromThresh / 5 : 5 * VPromThresh ;
     BoundDefault = BoundAnswer' ;
 
     % Get part of signal for analysis and plot.
@@ -537,13 +535,13 @@ while a < 1 % Choose appropriate crop/sampling region and perform peak analysis.
     AnalysisSection ( : , 1 ) = CurrentAndTime ( LowerBound : UpperBound , 1 ) ;
     AnalysisSection ( : , 2 ) = CurrentAndTime ( LowerBound : UpperBound , 2 ) ;
     AnalysisSection ( : , 3 ) = VoltageAndTime ( LowerBound : UpperBound , 1 ) ;
-    subplot ( 3 , 1 , 1 ) ;
+    subplot ( 4 , 1 , 1 ) ;
     yyaxis left
-    plot ( AnalysisSection ( : ,1 ) , AnalysisSection ( : , 2 ) , 'LineWidth' , 2 ) ;
+    plot ( AnalysisSection ( : , 1 ) , AnalysisSection ( : , 2 ) , 'LineWidth' , 2 ) ;
     ylabel ( 'Current/nA' ) ;
     xlabel ( 'Time/s' ) ;
     yyaxis right
-    plot ( AnalysisSection ( : , 1 ) , AnalysisSection ( : , 3 ) );
+    plot ( AnalysisSection ( : , 1 ) , AnalysisSection ( : , 3 ) ) ;
     ylabel ( 'Voltage/V' ) ;
     set ( gca , 'FontSize' , 24 ) ;
     set ( gcf , 'Color' , 'w' ) ;
@@ -556,30 +554,27 @@ while a < 1 % Choose appropriate crop/sampling region and perform peak analysis.
     FreqLower = SampleTime ( FLower , 1 ) ;
     FreqUpper = SampleTime ( FUpper , 1 ) ;
 
-    % To notify user if the sample rate varies through the measurement.
+    % To notify user if the time per sample varies through the measurement.
     if FreqLower ~= FreqUpper
 
         disp 'Sample rates are inconsistent across analysis region.' ;
 
     end
 
-    subplot ( 3 , 1 , 2 ) ;
-    findpeaks ( AnalysisSection ( : , 3 ) , ( 1 / FreqLower ) , ...
-        'MinPeakProminence' , VPromThresh , 'Threshold' , VPeakThresh ) ;
+    SectionLength = FreqLower * size ( AnalysisSection , 1 ) ;
+    % Length of analysis section in seconds.
+	AdjSection = abs ( highpass ( AnalysisSection ( : , 3 ) , 2 , 1 / FreqLower ) ) ;
+    % High pass filter, specified in Hz, and rectify analysis section.
+    subplot ( 4 , 1 , 2:4 ) ;
+    findpeaks ( AdjSection , ( 1 / FreqLower ) , ...
+        'MinPeakProminence' , VPromThresh , 'MinPeakHeight' , VPeakThresh ,...
+        'WidthReference' , 'HalfProm' , 'MinPeakWidth' , VWidthMin ,...
+        'MaxPeakWidth' , VWidthMax ) ;
     ylabel ( 'Voltage/V' ) ;
     xlabel ( 'Time/s' ) ;
     set ( gca , 'FontSize' , 24 ) ;
     set ( gcf , 'Color' , 'w' ) ;
     title ( 'Voltage peaks' ) ;
-
-    subplot ( 3 , 1 , 3 ) ;
-    findpeaks ( AnalysisSection ( : , 2 ) , ( 1 / FreqLower ) , ...
-        'MinPeakProminence' , CPromThresh , 'Threshold' , CPeakThresh ) ;
-    ylabel ( 'Current/nA' ) ;
-    xlabel ( 'Time/s' ) ;
-    set ( gca , 'FontSize' , 24 ) ;
-    set ( gcf , 'Color' , 'w' ) ;
-    title ( 'Current peaks' ) ;
 
     hold off
 
@@ -587,6 +582,9 @@ while a < 1 % Choose appropriate crop/sampling region and perform peak analysis.
     PeakChoice = questdlg ( 'Continue sampling or complete process:' ,...
         'Sampling options:' , 'Repeat' , 'Stop session' , 'Complete' ,...
         'Repeat' ) ;
+    
+    PeakBackground = smooth ( AnalysisSection ( : , 3 ) , FilterWidth * 2 , 'sgolay' , 1 ) ;
+    BoundDefault { 3 } = num2str ( mean ( PeakBackground ) ) ;
 
     switch PeakChoice
 
@@ -596,99 +594,166 @@ while a < 1 % Choose appropriate crop/sampling region and perform peak analysis.
 
             h = 1 ;
             a = 1 ;
-            OutputData = { ' ' } ; % Output something to avoid error.
+            OutputData = zeros ( 11 , 12 ) ; % Output something to avoid error.
             CharArray = zeros ( 1 , 4 ) ;
+            SetThreshold = VPromThresh ;
 
         case 'Complete'
 
             a = 1 ;
 
-            saveas ( gcf , strcat ( 'PeaksOut' , '.tif' ) ) ;
+            saveas ( gcf , strcat ( 'SpikesOut' , '.tif' ) ) ;
 
             % Once analysis section and desired promience threshold chosen,
             % generate a range of thresholds about the chosen value.
-            VIterationRange = 0 : VPromThresh / 4 : 5 * VPromThresh ;
             OutputData = zeros ( numel ( VIterationRange ) , 9 ) ;
             SetThreshold = VPromThresh ; % Retain set prominence threshold.
+            DistType = 'LogNormal' ; % Distribution type to fit.
+            set ( 0 , 'DefaultFigureWindowStyle' , 'Docked' ) ;
+            figure ;
 
             for i = 1 : numel ( VIterationRange )
 
                 % To iterate through a range of prominence thresholds.
                 VPromThresh = VIterationRange ( i ) ;
-
+% NEED TO CROP 10s OR SO FROM AdjSection
                 [ VoltagePeaks , VoltageLocs , VoltageWidths , VoltageProms ] = ...
-                    findpeaks ( AnalysisSection ( : , 3 ) , ( 1 / FreqLower ) , ...
-                    'MinPeakProminence' , VPromThresh , 'Threshold' , VPeakThresh ,...
-                    'WidthReference' , 'HalfProm' ) ;
+                    findpeaks ( AdjSection, ( 1 / FreqLower ) , ...
+                    'MinPeakProminence' , VPromThresh , 'MinPeakHeight' , VPeakThresh ,...
+                    'WidthReference' , 'HalfProm' , 'MinPeakWidth' , VWidthMin ,...
+                    'MaxPeakWidth' , VWidthMax ) ;
 
                 %% Get histogram data for spread/frequency of peaks/spikes.
+                
+                % Spike rate (spikes per second).
+                OutputData ( i , 1 ) = numel ( VoltagePeaks ) / SectionLength ;
 
                 % Spike separation.
                 VPeakSeps = diff ( VoltageLocs ) ;
                 if numel ( VPeakSeps ) < 2
                     
-                    OutputData ( i , 1 ) = 0 ;
                     OutputData ( i , 2 ) = 0 ;
                     OutputData ( i , 3 ) = 0 ;
+                    OutputData ( i , 4 ) = 0 ;
+                    OutputData ( i , 5 ) = 0 ;
                 
                 else
                     
-                    SepDist = fitdist ( VPeakSeps , 'Gamma' ) ;
-                    VPeakSpread = pdf ( SepDist , VPeakSeps ) ;
-                    OutputData ( i , 1 ) =  max ( VPeakSpread ) ;
-                    OutputData ( i , 2 ) = SepDist.a ;
-                    OutputData ( i , 3 ) = SepDist.b ;
+                    VPeakSeps = diff ( VoltageLocs ) ;
+                    SepBins = round ( max ( VPeakSeps ) / ( min ( VPeakSeps ) / 2 ) ) ;
+                    % Ensure there aren't so many bins that Matlab can't
+                    % handle it.
+                    if SepBins > 512
+                        
+                        SepBins = 512 ;
+                        
+                    end
+                    
+                    SepHist = histfit ( VPeakSeps , SepBins , DistType ) ;
+                    [ SMax , SIndex ] = max ( SepHist ( 1 ) . YData ) ;
+                    OutputData ( i , 2 ) = SepHist ( 1 ) . XData ( SIndex ) ;
+                    OutputData ( i , 3 ) = SMax ;
+                    SepDist = fitdist ( VPeakSeps , DistType ) ;
+                    OutputData ( i , 4 ) = SepDist . mu ;
+                    OutputData ( i , 5 ) = SepDist . sigma ;
+                    xlabel ( 'Peak separation/s' ) ;
+                    ylabel ( 'Counts' ) ;
+                    title ( strcat ( DataTitle , { ' at ' } , num2str ( VPromThresh ) , ' V prominence' ) ) ;
+                    set ( gca , 'FontSize' , 16 ) ;
+                    set ( gcf , 'Color' , 'w' ) ;            
+                    saveas ( gcf , char ( strcat ( 'SpikeSepHist,' , { ' ' } ,...
+                        num2str ( VPromThresh ) , ' V prominence.tif' ) ) ) ;
                 
                 end
                 
                 % Spike widths.
                 if numel ( VoltageWidths ) < 2
 
-                    OutputData ( i , 4 ) = 0 ;
-                    OutputData ( i , 5 ) = 0 ;
                     OutputData ( i , 6 ) = 0 ;
+                    OutputData ( i , 7 ) = 0 ;
+                    OutputData ( i , 8 ) = 0 ;
+                    OutputData ( i , 9 ) = 0 ;
                 
                 else
                     
-                    WidthDist =  fitdist ( VoltageWidths , 'Gamma' )  ;
-                    VWidthSpread = pdf ( WidthDist , VoltageWidths ) ;
-                    OutputData ( i , 4 ) = max ( VWidthSpread ) ;
-                    OutputData ( i , 5 ) = WidthDist.a ;
-                    OutputData ( i , 6 ) = WidthDist.b ;
+                    WidthBins = round ( max ( VoltageWidths ) / ( min ( VoltageWidths ) / 2 ) ) ;
+                    
+                    if WidthBins > 512
+                        
+                        WidthBins = 512 ;
+                        
+                    end
+                    
+                    WidthHist = histfit ( VoltageWidths , WidthBins , DistType ) ;
+                    [ WMax , WIndex ] = max ( WidthHist ( 1 ) . YData ) ;
+                    OutputData ( i , 6 ) = WidthHist ( 1 ) . XData ( WIndex ) ;
+                    OutputData ( i , 7 ) = WMax ;
+                    WidthDist =  fitdist ( VoltageWidths , DistType )  ;
+                    OutputData ( i , 8 ) = WidthDist . mu ;
+                    OutputData ( i , 9 ) = WidthDist . sigma ;
+                    xlabel ( 'Peak width/s' ) ;
+                    ylabel ( 'Counts' ) ;
+                    title ( strcat ( DataTitle , { ' at ' } , num2str ( VPromThresh ) , ' V prominence'  ) ) ;
+                    set ( gca , 'FontSize' , 16 ) ;
+                    set ( gcf , 'Color' , 'w' ) ;            
+                    saveas ( gcf , char ( strcat ( 'SpikeWidthHist,' , { ' ' } ,...
+                        num2str ( VPromThresh ) , ' V prominence.tif' ) ) ) ;
 
                 end
                 
                 % Spike prominences.
                 if numel ( VoltageProms ) < 2
                     
-                    OutputData ( i , 7 ) = 0 ;
-                    OutputData ( i , 8 ) = 0 ;
-                    OutputData ( i , 9 ) = 0 ;
+                    OutputData ( i , 10 ) = 0 ;
+                    OutputData ( i , 11 ) = 0 ;
+                    OutputData ( i , 12 ) = 0 ;
+                    OutputData ( i , 13 ) = 0 ;
                     
                 else
                     
-                    PromsDist =  fitdist ( VoltageProms , 'Gamma' )  ;
-                    VPromsSpread = pdf ( PromsDist , VoltageProms ) ;
-                    OutputData ( i , 7 ) = max ( VPromsSpread ) ;
-                    OutputData ( i , 8 ) = PromsDist.a ;
-                    OutputData ( i , 9 ) = PromsDist.b ;
+                    PromsBins = round ( max ( VoltageProms ) / ( min ( VoltageProms ) / 2 ) ) ;
+                    
+                    if PromsBins > 512
+                        
+                        PromsBins = 512 ;
+                        
+                    end
+                    
+                    PromsHist = histfit ( VoltageProms , PromsBins , DistType ) ;
+                    [ PMax , PIndex ] = max ( PromsHist ( 1 ) . YData ) ;
+                    OutputData ( i , 10 ) = PromsHist ( 1 ) . XData ( PIndex ) ;
+                    OutputData ( i , 11 ) = PMax ;
+                    PromsDist =  fitdist ( VoltageProms , DistType )  ;
+                    OutputData ( i , 12 ) = PromsDist . mu ;
+                    OutputData ( i , 13 ) = PromsDist . sigma ;
 
                 end
                 
                 % Spike heights.
                 if numel ( VoltagePeaks ) < 2
                     
-                    OutputData ( i , 10 ) = 0 ;
-                    OutputData ( i , 11 ) = 0 ;
-                    OutputData ( i , 12 ) = 0 ;
+                    OutputData ( i , 14 ) = 0 ;
+                    OutputData ( i , 15 ) = 0 ;
+                    OutputData ( i , 16 ) = 0 ;
+                    OutputData ( i , 17 ) = 0 ;
                     
                 else
                     
-                    HeightsDist =  fitdist ( VoltagePeaks , 'Gamma' )  ;
-                    VHeightsSpread = pdf ( HeightsDist , VoltagePeaks ) ;
-                    OutputData ( i , 10 ) = max ( VHeightsSpread ) ;
-                    OutputData ( i , 11 ) = HeightsDist.a ;
-                    OutputData ( i , 12 ) = HeightsDist.b ;
+                    HeightsBins = round ( max ( VoltagePeaks ) / ( min ( VoltagePeaks ) / 2 ) ) ;
+                    
+                    if HeightsBins > 512
+                        
+                        HeightsBins = 512 ;
+                        
+                    end
+                    
+                    HeightsHist = histfit ( VoltagePeaks , HeightsBins , DistType) ;
+                    [ HMax , HIndex ] = max ( HeightsHist ( 1 ) . YData ) ;
+                    OutputData ( i , 14 ) = HeightsHist ( 1 ) . XData ( HIndex ) ;
+                    OutputData ( i , 15 ) = HMax ;
+                    HeightsDist =  fitdist ( VoltagePeaks , DistType )  ;
+                    OutputData ( i , 16 ) = HeightsDist . mu ;
+                    OutputData ( i , 17 ) = HeightsDist . sigma ;
 
                 end
                 
@@ -724,7 +789,7 @@ end
 % end
 % 
 % BoundDefault = { '0' , '0' , '5' , '50' } ;
-% 
+% f = 1 ; % Remove to enable FFT analysis.
 % while f < 1 % Choose appropriate crop/sampling region and perform FFT.
 %     
 %     % Get user input of time to sample between.
@@ -925,14 +990,18 @@ end
 %             f = 1 ;
 %             
 %             saveas ( gcf , strcat ( 'FFTOut' , '.tif' ) ) ;
-%
+% 
 %     end
 %     
 % end
 
 % Record characteristics of measurement.
-CharArray ( 2 ) = max ( CurrentAndTime ( : , 2 ) ) ;
-CharArray ( 3 ) = max ( VoltageAndTime ( : , 1 ) ) ;
-CharArray ( 4 ) = mean ( VoltageAndTime ( LowerBound : UpperBound , 1 ) ) ;
+if h ~= 1
+    
+    CharArray ( 2 ) = max ( CurrentAndTime ( : , 2 ) ) ;
+    CharArray ( 3 ) = max ( VoltageAndTime ( : , 1 ) ) ;
+    CharArray ( 4 ) = mean ( PeakBackground ) ;
+
+end
 
 end
