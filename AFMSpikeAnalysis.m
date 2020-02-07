@@ -51,6 +51,7 @@ SetPoints = zeros ( NFC , 1 ) ; % Setpoint values.
 SampleFrequency = zeros ( NFC , 1 ) ; % Matrix for sample lengths per file.
 AnalysisSection = repmat ( { ' ' } , NFC , 1 ) ; % For cropped analysis sections.
 VIterationRange = [ 0.05 0.1 0.2 0.5 ]; % Range of spike voltage prominence thresholds.
+% VIterationRange = 0 : 0.1 : 5 ;
 NumProms = numel ( VIterationRange ) ; % Number of prominences used.
 for i = 1 : NFC
     if NFC == 1 
@@ -107,7 +108,7 @@ if SaveHists == 1 % New folder to put histograms in, if not already present.
     end
     cd ./'Spike Histograms'
 end
-% For lognormal, fitting parameters µ (median) and ? (scatter) are used.
+% For lognormal, fitting parameters µ (median) and sigma (scatter) are used.
 for i = 1 : NFC
     % Find spikes (peaks) in the data. This section looks through each file
     % and iterates findpeaks.m through a range of spike prominences, defined
@@ -329,10 +330,11 @@ elseif iColours == 2 % Creates the most distinct colour set.
 elseif iColours == 3 % Creates another colour set.
     ChosenColours = lines ( NumProms ) ;
 end
-LineWidth = 2 ; % Choose line width for all plots.
-MarkerSize = 8 ; % Choose marker size for all plots.
-FontSize = 18 ; % Choose font size for all plots.
-FigLineWidth = 2 ; % Choose figure box line width for all plots.
+LineWidth = 1.2 ; % Choose line width for all plots.
+MarkerSize = 5 ; % Choose marker size for all plots.
+FontSize = 14 ; % Choose font size for all plots.
+FigLineWidth = 1.2 ; % Choose figure box line width for all plots.
+FontName = 'Helvetica' ; % Choose font for all plots.
 
 %% Number of spikes per second (from entire range).
 % i.e. taking the total number of detected spikes and dividing by the total
@@ -349,10 +351,8 @@ for i = 1 : NumProms
     SpikesPerSecond = reshape ( OutputData ( i , 1 , : ) , NFC , 1 ) ;
     semilogx ( SetPoints , SpikesPerSecond , 'o' , 'Color' ,...
         ChosenColours ( i , : ) , 'MarkerSize' , MarkerSize , 'LineWidth' , LineWidth ) ;
-    xlabel ( '{\itI_{set}}/nA' ) ;
+    xlabel ( '{\itI_{set}} [nA]' ) ;
     ylabel ( '\itS_{pS}' ) ;
-    set ( gca , 'FontSize' , FontSize , 'LineWidth' , FigLineWidth ) ;
-    set ( gcf , 'Color' , 'w' ) ;
     hold on
     [ SpSFit , SpSGoF ] = fit ( SetPoints , SpikesPerSecond , RisingThresholdFit ,...
         SpSFitOptions ) ;
@@ -376,7 +376,7 @@ for i = 1 : NumProms
         VFittingRange ) ) ) ) + SpS ( i , 3 ) ;
     end
     semilogx ( VFittingRange , SpSModel  , 'Color' , ChosenColours ( i , : ),...
-        'LineWidth' , 2 ) ;
+        'LineWidth' , LineWidth ) ;
     %% Also plot change in fitting parameters at end of loop.
     if i == NumProms
         figure ;
@@ -388,10 +388,42 @@ for i = 1 : NumProms
         ylabel ( 'Normalized parameter value' ) ;
         legend ( 'p_1' , 'p_2' , 'I_0' , 'Goodness of fit' , 'Location' , 'NorthWest' ) ;
         legend ( 'BoxOff' ) ;
-        set ( gca , 'FontSize' , FontSize , 'LineWidth' , FigLineWidth ) ;
-        set ( gcf , 'Color' , 'w' ) ;
         title ( strcat ( 'SpS' , FitTitle ) ) ;
     end
+end
+
+%% Additional plotting for SpS fitting parameters.
+iSpS = 0 ;
+if iSpS == 1
+    figure ;
+    semilogy ( SpS ( : , 3 ) , SpS ( : , 1 ) , 'LineWidth' , 3 ) ;
+    title ('{\it S_{pS} = S_{pSmax} [ 1 + tanh ( p(I_{set} - I_0 ))]}/2');
+    ylabel ( '{\it S_{pSmax}}');
+    xlabel ( '{\it I_0} [nA]');
+
+    figure ;
+    plot ( SpS ( : , 3 ) , SpS ( : , 2 ) , 'LineWidth' , 3 ) ;
+    title ('{\it S_{pS} = S_{pSmax} [ 1 + tanh ( p(I_{set} - I_0 ))]}/2');
+    ylabel ( '{\it p}');
+    xlabel ( '{\it I_0} [nA]');
+
+    figure ;
+    plot ( VIterationRange , SpS ( : , 2 ) , 'LineWidth' , LineWidth ) ;
+    title ('{\it S_{pS} = S_{pSmax} [ 1 + tanh ( p(I_{set} - I_0 ))]}/2');
+    ylabel ( '{\it p}');
+    xlabel ( '{\it V_p} [V]');
+
+    figure ;
+    semilogy ( VIterationRange , SpS ( : , 1 ) , 'LineWidth' , 3 ) ;
+    title ('{\it S_{pS} = S_{pSmax} [ 1 + tanh ( p(I_{set} - I_0 ))]}/2');
+    ylabel ( '{\it S_{pSmax}}');
+    xlabel ( '{\it V_p} [V]');
+
+    figure ;
+    plot ( VIterationRange , SpS ( : , 3 ) , 'LineWidth', LineWidth );
+    title ('{\it S_{pS} = S_{pSmax} [ 1 + tanh ( p(I_{set} - I_0 ))]}/2');
+    ylabel ( '{\it I_0} [nA]');
+    xlabel ( '{\it V_p} [V]');
 end
 
 %% Modal time between spikes.
@@ -407,8 +439,6 @@ for i = 1 : NumProms
         ChosenColours ( i , : ) , 'MarkerSize' , MarkerSize , 'LineWidth' , LineWidth ) ;
     xlabel ( 'Current bias/nA' ) ;
     ylabel ( 'Modal time between spikes/s' ) ;
-    set ( gca , 'FontSize' , FontSize , 'LineWidth' , FigLineWidth ) ;
-    set ( gcf , 'Color' , 'w' ) ;
     hold on
     [ TbSFit , TbSGoF ] = fit ( SetPoints , TimeBetweenSpikes , 'Power2'  ,...
          TbSFitOptions ) ;
@@ -425,8 +455,6 @@ for i = 1 : NumProms
             VIterationRange , TbS ( : , 3 ) , 'LineWidth' , LineWidth ) ;
         xlabel ( 'Prominence threshold/V' ) ;
         ylabel ( 'Parameter value' ) ;
-        set ( gca , 'FontSize' , FontSize , 'LineWidth' , FigLineWidth ) ;
-        set ( gcf , 'Color' , 'w' ) ;
         title ( 'TbS threshold fitting' ) ;
         legend ( 'a' , 'b' , 'c' , 'Location' , 'NorthWest' ) ;
     end
@@ -446,8 +474,6 @@ for i = 1 : NumProms
         ChosenColours ( i , : ) , 'MarkerSize' , MarkerSize , 'LineWidth' , LineWidth ) ;
     xlabel ( 'Current bias/nA' ) ;
     ylabel ( 'Effective spike frequency/Hz' ) ;
-    set ( gca , 'FontSize' , FontSize , 'LineWidth' , FigLineWidth ) ;
-    set ( gcf , 'Color' , 'w' ) ;
     hold on
     [ ESFFit , ESFGoF ] = fit ( SetPoints , EffectiveSpikeFreq , tanhFit  ,...
          ESFFitOptions ) ;
@@ -471,8 +497,6 @@ for i = 1 : NumProms
             VIterationRange , ESF ( : , 3 ) , 'LineWidth' , LineWidth ) ;
         xlabel ( 'Prominence threshold/V' ) ;
         ylabel ( 'Parameter value' ) ;
-        set ( gca , 'FontSize' , FontSize , 'LineWidth' , FigLineWidth ) ;
-        set ( gcf , 'Color' , 'w' ) ;
         title ( 'ESF threshold fitting' ) ;
         legend ( 'a' , 'b' , 'c' , 'Location' , 'NorthWest' ) ;
     end
@@ -491,8 +515,6 @@ for i = 1 : NumProms
         ChosenColours ( i , : ) , 'MarkerSize' , MarkerSize , 'LineWidth' , LineWidth ) ;
     xlabel ( 'Current bias/nA' ) ;
     ylabel ( 'Modal spike width/s' ) ;
-    set ( gca , 'FontSize' , FontSize , 'LineWidth' , FigLineWidth ) ;
-    set ( gcf , 'Color' , 'w' ) ;
     hold on
 	[ SWFit , SWFitGoF ] = fit ( SetPoints , ModalSpikeWidths , '(a*exp(-b*x))+c' ,...
          SWFitOptions ) ; % Need to choose the best fitting option here.
@@ -524,10 +546,8 @@ for i = 1 : NumProms
         SetPoints .* reshape ( OutputData ( i , 19 , : ) , NFC , 1 ) ;
     loglog ( SetPoints , EnergyPerSpike , 'o' , 'Color' , ChosenColours ( i , : ),...
         'MarkerSize' , MarkerSize , 'LineWidth' , LineWidth ) ;
-    xlabel ( '{\it I_{set}}/nA' ) ;
-    ylabel ( '{\itE_{ps}}/nJ' ) ;
-    set ( gca , 'FontSize' , FontSize , 'LineWidth' , FigLineWidth ) ;
-    set ( gcf , 'Color' , 'w' ) ;
+    xlabel ( '{\it I_{set}} [nA]' ) ;
+    ylabel ( '{\itE_{pS}} [nJ]' ) ;
     hold on
 	[ EpSFit , EpSFitGoF ] = fit ( SetPoints , EnergyPerSpike , 'Poly1' ,...
         EpSFitOptions ) ; % Linear fitting works best here.
@@ -546,8 +566,6 @@ for i = 1 : NumProms
         'Color' , ChosenColours ( i , : ) , 'LineWidth' , LineWidth ) ;
     xlabel ( 'Current bias/nA' ) ;
     ylabel ( 'Spike separation µ/-' ) ;
-    set ( gca , 'FontSize' , FontSize , 'LineWidth' , FigLineWidth ) ;
-    set ( gcf , 'Color' , 'w' ) ;
     hold on
     yyaxis right
     semilogx ( SetPoints , ( reshape ( OutputData ( i , 5 , : ) , NFC , 1 ) ) , '--' ,...
@@ -563,8 +581,6 @@ for i = 1 : NumProms
         'Color' , ChosenColours ( i , : ) , 'LineWidth' , LineWidth ) ;
     xlabel ( 'Current bias/nA' ) ;
     ylabel ( 'Spike width µ/-' ) ;
-    set ( gca , 'FontSize' , FontSize , 'LineWidth' , FigLineWidth ) ;
-    set ( gcf , 'Color' , 'w' ) ;
     hold on
     yyaxis right
     semilogx ( SetPoints , ( reshape ( OutputData ( i , 10 , : ) , NFC , 1 ) ) , '--' ,...
@@ -580,8 +596,6 @@ for i = 1 : NumProms
         'Color' , ChosenColours ( i , : ) , 'LineWidth' , LineWidth ) ;
     xlabel ( 'Current bias/nA' ) ;
     ylabel ( 'Spike prominence µ/-' ) ;
-    set ( gca , 'FontSize' , FontSize , 'LineWidth' , FigLineWidth ) ;
-    set ( gcf , 'Color' , 'w' ) ;
     hold on
     yyaxis right
     semilogx ( SetPoints , ( reshape ( OutputData ( i , 14 , : ) , NFC , 1 ) ) , '--' ,....
@@ -597,8 +611,6 @@ for i = 1 : NumProms
         ChosenColours ( i , : ) , 'LineWidth' , LineWidth ) ;
 	xlabel ( 'Current bias/nA' ) ;
     ylabel ( 'Modal spike height/V' ) ;
-    set ( gca , 'FontSize' , FontSize , 'LineWidth' , FigLineWidth ) ;
-    set ( gcf , 'Color' , 'w' ) ;
     hold on
 end
 
@@ -610,8 +622,6 @@ for i = 1 : NumProms
         ChosenColours ( i , : ) , 'LineWidth' , LineWidth ) ;
 	xlabel ( 'Current bias/nA' ) ;
     ylabel ( 'Mean spike height/V' ) ;
-    set ( gca , 'FontSize' , FontSize , 'LineWidth' , FigLineWidth ) ;
-    set ( gcf , 'Color' , 'w' ) ;
     hold on
 end
 
@@ -623,8 +633,6 @@ for i = 1 : NumProms
         'Color' , ChosenColours ( i , : ) , 'LineWidth' , LineWidth ) ;
     xlabel ( 'Current bias/nA' ) ;
     ylabel ( 'Spike height µ/-' ) ;
-    set ( gca , 'FontSize' , FontSize , 'LineWidth' , FigLineWidth ) ;
-    set ( gcf , 'Color' , 'w' ) ;
     hold on
     yyaxis right
     semilogx ( SetPoints , ( reshape ( OutputData ( i , 18 , : ) , NFC , 1 ) ) , '--' ,...
@@ -646,3 +654,15 @@ end
 %     waitforbuttonpress
 %     end
 % end
+
+%% Format all figures.
+iF = 1 ;
+if iF == 1
+    NumPlots = findobj ( 'Type' , 'Figure' ) ;
+    for i = 1 : length ( NumPlots )
+        figure ( NumPlots ( i ) . Number ) ;
+        set ( gca , 'FontSize' , FontSize , 'FontName' , FontName ,...
+            'LineWidth' , FigLineWidth , 'Tickdir' , 'Out' , 'Box' , 'Off' ) ;
+        set ( gcf , 'Color' , 'w' ) ;
+    end
+end
