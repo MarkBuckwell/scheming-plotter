@@ -73,7 +73,8 @@ for i = 1 : NFC
     SampleFrequency ( i ) = numel ( DataArray { i } { 1 } ) / DataArray { i } { 1 } ( end ) ;
     FilterWidth = round ( SampleFrequency ( i ) ) ;
     DataArray { i } { 4 } = smooth ( DataArray { i } { 3 } , FilterWidth , 'sgolay' , 1 ) ;
-    DataArray { i } { 5 } = abs ( highpass ( DataArray { i } { 3 } , 2 , SampleFrequency ( i ) ) ) ;
+    DataArray { i } { 5 } = highpass ( DataArray { i } { 3 } , 2 , SampleFrequency ( i ) ) ;
+    DataArray { i } { 6 } = abs ( highpass ( DataArray { i } { 3 } , 2 , SampleFrequency ( i ) ) ) ;
     % Produce section for analysis, cropping first and last 10 seconds.
     AnalysisSection { i } = DataArray { i } { 3 } ( 10 * FilterWidth : end -...
         10 * FilterWidth ) ;
@@ -640,21 +641,36 @@ for i = 1 : NumProms
         ylabel ( 'Spike height {\sigma}/--' ) ;
 end
 
-%% FFT from binary spike data.
-% figure ;
-% for i = 1 : NFC
-%     for j = 1 : NumProms
-%     SpikeFFT = fft ( FFTOutput { i , j } ) ; % FFT of binary spikes.
-%     FFTFrequency = ( 1 ./ SampleFrequency ( i ) ) *...
-%         ( 0 : ( length ( SpikeFFT ) / 2 ) ) / length ( SpikeFFT ) ;
-% 	  SpikeSpectrum2 = abs ( SpikeFFT / length ( SpikeFFT ) ) ; % Two-sided spectrum.
-% 	  SpikeSpectrum1 = SpikeSpectrum2 ( 1 : ( length ( SpikeFFT ) / 2 + 1 ) ) ; % Single-sided spectrum.
-%     SpikeSpectrum1 ( 2 : end - 1 ) = 2 * SpikeSpectrum1 ( 2 : end - 1 ) ;
-%     semilogx ( FFTFrequency , SpikeSpectrum1 , 'LineWidth' , LineWidth ) ;
-%     waitforbuttonpress
-%     end
-% end
+%% Autocorrelation.
+iAuto = 1 ;
+if iAuto == 1
+    for i = 1 : size ( DataArray , 1 )
+        figure ;
+        AutoSpikes = autocorr ( DataArray { i } { 6 } , 'NumLags' ,...
+            size ( DataArray { i } { 3 } , 1 ) - 1 ) ;
+        AutoTime = ( 0 : 1 : size ( AutoSpikes ) - 1 ) .* ( 1 / SampleFrequency ( i , 1 ) ) ;
+        plot ( AutoTime , AutoSpikes ) ;
+        xlabel ( 'Lag time [s]' ) ;
+        ylabel ( 'ACF [a.u.]' ) ;
+    end
+end
 
+%% FFT from binary spike data.
+iFFT = 0 ;
+if iFFT == 1
+    figure ;
+    for i = 1 : NFC
+        for j = 1 : NumProms
+        SpikeFFT = fft ( FFTOutput { i , j } ) ; % FFT of binary spikes.
+        FFTFrequency = ( 1 ./ SampleFrequency ( i ) ) *...
+            ( 0 : ( length ( SpikeFFT ) / 2 ) ) / length ( SpikeFFT ) ;
+          SpikeSpectrum2 = abs ( SpikeFFT / length ( SpikeFFT ) ) ; % Two-sided spectrum.
+          SpikeSpectrum1 = SpikeSpectrum2 ( 1 : ( length ( SpikeFFT ) / 2 + 1 ) ) ; % Single-sided spectrum.
+        SpikeSpectrum1 ( 2 : end - 1 ) = 2 * SpikeSpectrum1 ( 2 : end - 1 ) ;
+        semilogx ( FFTFrequency , SpikeSpectrum1 , 'LineWidth' , LineWidth ) ;
+        end
+    end
+end
 %% Format all figures.
 iF = 1 ;
 if iF == 1
